@@ -1,0 +1,21 @@
+user nginx;
+pid /var/run/nginx.pid;
+worker_processes 1;
+
+http {
+    server_tokens off;
+    access_log    off;
+    error_log     off;
+
+    include /opt/nginx/conf/mime.types;
+    default_type application/image;
+
+    server {
+        listen      8842;
+        server_name _;
+
+        location / {
+            proxy_pass  https://google.com;
+        }
+    }
+}
