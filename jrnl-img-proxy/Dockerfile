@@ -26,8 +26,8 @@ RUN apk add --no-cache \
 # Build nginx
 RUN mkdir -p /usr/src /opt/nginx && cd /usr/src && \
     # get nginx_aws_auth
-    wget https://github.com/anomalizer/ngx_aws_auth/archive/${NGX_AWS_AUTH_VER}.tar.gz && \
-    tar -xvf ${NGX_AWS_AUTH_VER}.tar.gz && \
+    wget https://github.com/anomalizer/ngx_aws_auth/archive/master.tar.gz && \
+    tar -xvf master.tar.gz && \
 
     # get and verify nginx
     wget https://nginx.org/download/nginx-${NGX_VERSION}.tar.gz && \
@@ -46,7 +46,7 @@ RUN mkdir -p /usr/src /opt/nginx && cd /usr/src && \
         --with-http_ssl_module \
         --user=nginx \
         --group=nginx \
-        --add-module=/usr/src/ngx_aws_auth-${NGX_AWS_AUTH_VER} && \
+        --add-module=/usr/src/ngx_aws_auth-master && \
     make -j$(getconf _NPROCESSORS_ONLN) && \
     make install && \
 
