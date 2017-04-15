@@ -12,76 +12,74 @@ set -euo pipefail
 
 # Generic functions
 function log () {
-  printf "$(date) $*\n"
-}
-
-function die () {
-  log "ERROR: $*"
-  exit 2
+  printf "$(date) $(basename -- "$0"): $*\n"
 }
 
 function usage_and_exit () {
-  echo "Usage: s3-sse-upload.sh -f SOURCE -d S3_PATH -b S3_BUCKET"
+  echo "Usage: s3-sse-upload.sh -f SOURCE -b S3_BUCKET -d S3_PATH"
   exit 2
 }
 
-# Helpers
-
-function encode_keys () {
-# 
-}
-
-# Handle args
+# Parse args
 while getopts "f:d:b:" OPTION
 do
   case ${OPTION} in
-    f) source_path=$OPTARG;;
-    c) dest_path=$OPTARG;;
     b) dest_bucket=$OPTARG;;
+    c) dest_path=$OPTARG;;
+    f) source_path=$OPTARG;;
     *) usage_and_exit;;
   esac
 done
 
-# bail if no source or destination specified
-if [[ -z ${source_file} ]] || [[ -z ${dest_file} ]] || [[ -z ${} ]]; then
+# Sanity checks
+if ! [[ -r ${source_path:-} ]]; then
   usage_and_exit
 fi
 
-S3_UPLOAD_FILE=some/path/file.txt
-S3_BUCKET=bucket name here
-S3_DESTINATION_FILE=folder/folder2/file.txt
+for cmd in "curl openssl"
+do
+  if ! command -v ${cmd}; then
+    log "ERROR: ${cmd} not found on path"
+    exit 1
+  fi
+done
 
-S3_KEY=Amazon Admin Access Key
-S3_SECRET= Secret Key Here
+# Globals
+if [[ -z ${AWS_S3_SSEC_KEY:-} ]] || [[ -z ${AWS_ACCESS_KEY_ID:-} ]] || [[ -z ${AWS_SECRET_ACCESS_KEY:-} ]];
+  log "ERROR: must set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_S3_SSEC_KEY environment variables."
+  exit 1
+else
+  s3_access_key=${AWS_ACCESS_KEY_ID}
+  s3_secret_key=${AWS_SECRET_ACCESS_KEY}
+  s3_ssec_key="$(echo -n ${AWS_S3_SSEC_KEY} | openssl enc -base64)"
+  s3_ssec_key_md5="$(echo -n ${AWS_S3_SSEC_KEY} | openssl dgst -md5 -binary | openssl enc -base64)"
+fi
 
-S3_CONTENT_TYPE="application/octet-stream"
+s3_endpoint="s3.amazonaws.com"
+s3_cipher="AES256"
+s3_content_type="application/octet-stream"
+s3_timestamp="$(LC_ALL=C date -u +"%a, %d %b %Y %X %z")"
+s3_file_md5="$(openssl md5 -binary < ${source_path} | base64)"
 
-## The date formatted in GMT
-S3_DATE="$(LC_ALL=C date -u +"%a, %d %b %Y %X %z")"
+# S3 signature calculation
+s3_signature=<<EOF
+PUT
+${s3_file_md5}
+${s3_content_type}
+${s3_timestamp}
+x-amz-server-side-encryption-customer-algorithm:${s3_cipher}
+x-amz-server-side-encryption-customer-key:${s3_ssec_key}
+x-amz-server-side-encryption-customer-key-md5:${s3_ssec_key_md5}
+/${dest_bucket}/${dest_path}
+EOF
+s3_signature=$(openssl sha1 -binary -hmac "${s3_secret_key}" | base64)
 
-S3_MD5SUM="$(openssl md5 -binary < ${S3_UPLOAD_FILE} | base64)"
-
-S3_SSEC_ALGORITHM=AES256
-
-## The Server Side Encryption - Customer Provided Key to use. This must be 32 bytes in length
-S3_SSEC_KEY=00000000000000000000000000012345
-
-## Base64 encode the SSE-C key. This is used as the x-amz-server-side-encryption-customer-key
-S3_ENCRYPTION_KEY="$(echo -n ${S3_SSEC_KEY} | openssl enc -base64)"
-
-## MD5 hash the SSE-C key. Base64 the result. This is used as the x-amz-server-side-encryption-customer-key-MD5
-S3_ENCRYPTION_MD5="$(echo -n ${S3_SSEC_KEY} | openssl dgst -md5 -binary | openssl enc -base64)"
-
-## S3 validates the request by checking the data passed in is in a specific order. See http://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-authentication-HTTPPOST.html
-S3_SIGNATURE="$(printf "PUT\n$S3_MD5SUM\n$S3_CONTENT_TYPE\n$S3_DATE\nx-amz-server-side-encryption-customer-algorithm:$S3_SSEC_ALGORITHM\nx-amz-server-side-encryption-customer-key:$S3_ENCRYPTION_KEY\nx-amz-server-side-encryption-customer-key-md5:$S3_ENCRYPTION_MD5\n/$S3_BUCKET/$S3_DESTINATION_FILE" | openssl sha1 -binary -hmac "$S3_SECRET" | base64)"
-
-## Send the actual curl
-curl -v -T ${S3_UPLOAD_FILE} https://$S3_BUCKET.s3.amazonaws.com/${S3_DESTINATION_FILE} \
-     -H "Date: ${S3_DATE}" \
-     -H "Authorization: AWS ${S3_KEY}:${S3_SIGNATURE}" \
-     -H "Content-Type: ${S3_CONTENT_TYPE}" \
-     -H "Content-MD5: ${S3_MD5SUM}" \
-     -H "x-amz-server-side-encryption-customer-algorithm:${S3_SSEC_ALGORITHM}" \
-     -H "x-amz-server-side-encryption-customer-key:${S3_ENCRYPTION_KEY}" \
-     -H "x-amz-server-side-encryption-customer-key-MD5:${S3_ENCRYPTION_MD5}"
-
+# Upload file
+curl -v -T ${source_path} https://${dest_bucket}.${s3_endpoint}/${dest_path} \
+     -H "Date: ${s3_timestamp}" \
+     -H "Authorization: AWS ${s3_access_key}:${s3_signature}" \
+     -H "Content-Type: ${s3_content_type}" \
+     -H "Content-MD5: ${s3_file_md5}" \
+     -H "x-amz-server-side-encryption-customer-algorithm:${s3_cipher}" \
+     -H "x-amz-server-side-encryption-customer-key:${s3_ssec_key}" \
+     -H "x-amz-server-side-encryption-customer-key-MD5:${s3_ssec_key_md5}"
