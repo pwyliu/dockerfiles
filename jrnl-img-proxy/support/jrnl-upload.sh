@@ -21,11 +21,11 @@ function usage_and_exit () {
 }
 
 # Parse args
-while getopts "f:d:b:" OPTION
+while getopts "b:d:f:" OPTION
 do
   case ${OPTION} in
     b) dest_bucket=$OPTARG;;
-    c) dest_path=$OPTARG;;
+    d) dest_path=$OPTARG;;
     f) source_path=$OPTARG;;
     *) usage_and_exit;;
   esac
@@ -33,19 +33,20 @@ done
 
 # Sanity checks
 if ! [[ -r ${source_path:-} ]]; then
-  usage_and_exit
+  log "ERROR: cannot read source file ${source_path}"
+  exit 1
 fi
 
 for cmd in "curl openssl"
 do
-  if ! command -v ${cmd}; then
+  if ! command -v ${cmd} >> /dev/null; then
     log "ERROR: ${cmd} not found on path"
     exit 1
   fi
 done
 
 # Globals
-if [[ -z ${AWS_S3_SSEC_KEY:-} ]] || [[ -z ${AWS_ACCESS_KEY_ID:-} ]] || [[ -z ${AWS_SECRET_ACCESS_KEY:-} ]];
+if [[ -z ${AWS_S3_SSEC_KEY:-} ]] || [[ -z ${AWS_ACCESS_KEY_ID:-} ]] || [[ -z ${AWS_SECRET_ACCESS_KEY:-} ]]; then
   log "ERROR: must set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_S3_SSEC_KEY environment variables."
   exit 1
 else
