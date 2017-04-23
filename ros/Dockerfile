@@ -20,8 +20,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python-catkin-tools \
         python-lxml \
     && rm -rf /var/lib/apt/lists/ \
-
-    # We want to cache apt downloads between builds, so remove this usually-a-good-idea conf file.
     && rm /etc/apt/apt.conf.d/docker-clean
 
 # Install docker client

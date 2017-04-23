@@ -1,2 +1,2 @@
 # ros-build-env
-this is a readme
+[ROS](http://www.ros.org/) image with some extra stuff. Probably don't use this.
